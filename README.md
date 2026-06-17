@@ -1,44 +1,76 @@
 # FixedWrapDiff
 
-FixedWrapDiff is a small WinForms tool for comparing fixed-length text files after virtually wrapping each original line at a specified column count.
+FixedWrapDiff は、固定長テキストファイルを指定桁数で仮想的に折り返して比較する Windows 用ツールです。
 
-## Features
+WinMerge では「100桁ごとに折り返した状態で比較する」といった見方がしづらいため、長い固定長レコードを読みやすく比較することを目的にしています。
 
-- Compare two text files without modifying the originals.
-- Split each original line into virtual wrapped lines.
-- Show original line number, wrap index, and source column range.
-- Highlight different virtual lines.
-- Highlight differing character positions inside changed lines.
-- Switch between side-by-side and top-bottom views.
-- Synchronize vertical and horizontal scrolling.
-- Read files as Shift_JIS or UTF-8.
+## ダウンロード
 
-## Requirements
+最新版は GitHub Releases からダウンロードできます。
+
+[FixedWrapDiff-v0.1.0-win-x64.zip をダウンロード](https://github.com/konikatsu/FixedWrapDiff/releases/download/v0.1.0/FixedWrapDiff-v0.1.0-win-x64.zip)
+
+zip を展開して、`FixedWrapDiff.exe` を起動してください。
+
+この配布版は self-contained build なので、通常は別途 .NET Desktop Runtime をインストールしなくても動作します。
+
+## 画面イメージ
+
+![FixedWrapDiff screenshot](assets/screenshot.png)
+
+## 主な機能
+
+- 左右2つのテキストファイルを比較
+- 元ファイルは変更しない
+- 指定した桁数で各行を仮想的に折り返し
+- 元行番号、折返番号、開始桁、終了桁を表示
+- 差分行を背景色で強調
+- 差分行内の異なる文字位置も強調
+- 左右表示、上下表示を切り替え可能
+- 縦スクロール、横スクロールを同期
+- Shift_JIS / UTF-8 に対応
+
+## 表示例
+
+```text
+[L000001 W001 C0001-0100] xxxxxxxxxx
+[L000001 W002 C0101-0200] xxxxxxxxxx
+[L000001 W003 C0201-0300] xxxxxxxxxx
+```
+
+- `L000001`: 元ファイルの1行目
+- `W001`: その行を折り返した1ブロック目
+- `C0001-0100`: 元行内の1桁目から100桁目
+
+## 使い方
+
+1. 左ファイルを選択します。
+2. 右ファイルを選択します。
+3. 折り返し桁数を指定します。
+4. 文字コードを選択します。
+5. 表示モードを選択します。
+6. `比較` ボタンを押します。
+
+## 開発者向け
+
+### 必要環境
 
 - Windows
-- .NET 8 Desktop Runtime, or a self-contained published build
+- .NET 8 SDK
 
-## Build
+### ビルド
 
 ```powershell
 dotnet build
 ```
 
-## Run
+### 実行
 
 ```powershell
 dotnet run
 ```
 
-## Publish
-
-Framework-dependent:
-
-```powershell
-dotnet publish -c Release
-```
-
-Self-contained x64 build:
+### Release 用 publish
 
 ```powershell
 dotnet publish -c Release -r win-x64 --self-contained true
