@@ -9,22 +9,34 @@ public sealed partial class Form1 : Form
     private readonly TextBox leftPathTextBox = new();
     private readonly TextBox rightPathTextBox = new();
     private readonly NumericUpDown wrapColumnInput = new();
+    private readonly NumericUpDown visibleLineCountInput = new();
     private readonly ComboBox encodingComboBox = new();
     private readonly ComboBox viewModeComboBox = new();
     private readonly SplitContainer resultSplitContainer = new();
+    private readonly SyncRichTextBox leftRulerBox = new();
+    private readonly SyncRichTextBox rightRulerBox = new();
     private readonly SyncRichTextBox leftTextBox = new();
     private readonly SyncRichTextBox rightTextBox = new();
     private readonly Color differenceBackColor = Color.FromArgb(255, 244, 190);
     private readonly Color characterDifferenceBackColor = Color.FromArgb(255, 205, 205);
+    private readonly string[] startupArgs;
 
     private List<CompareLine> currentCompareLines = [];
     private bool hasCurrentComparison;
     private bool isSynchronizingScroll;
 
-    public Form1()
+    public Form1(string[]? args = null)
     {
+        startupArgs = args ?? [];
         InitializeComponent();
         BuildLayout();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        ApplyStartupArgs();
+        ApplyVisibleLineCount();
     }
 
     private void BuildLayout()
@@ -68,6 +80,13 @@ public sealed partial class Form1 : Form
         wrapColumnInput.Maximum = 100000;
         wrapColumnInput.Value = 100;
         wrapColumnInput.Width = 90;
+        wrapColumnInput.ValueChanged += (_, _) => UpdateRulers((int)wrapColumnInput.Value);
+
+        visibleLineCountInput.Minimum = 5;
+        visibleLineCountInput.Maximum = 100;
+        visibleLineCountInput.Value = 25;
+        visibleLineCountInput.Width = 70;
+        visibleLineCountInput.ValueChanged += (_, _) => ApplyVisibleLineCount();
 
         encodingComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
         encodingComboBox.Items.AddRange(["Shift_JIS", "UTF-8"]);
@@ -92,12 +111,15 @@ public sealed partial class Form1 : Form
             Margin = new Padding(0, 6, 0, 0),
         };
         AddLabeledControl(optionPanel, "折り返し桁数", wrapColumnInput);
+        AddLabeledControl(optionPanel, "表示行数", visibleLineCountInput);
         AddLabeledControl(optionPanel, "文字コード", encodingComboBox);
         AddLabeledControl(optionPanel, "表示モード", viewModeComboBox);
         optionPanel.Controls.Add(compareButton);
         topPanel.Controls.Add(optionPanel, 0, 2);
         topPanel.SetColumnSpan(optionPanel, 7);
 
+        ConfigureRulerTextBox(leftRulerBox);
+        ConfigureRulerTextBox(rightRulerBox);
         ConfigureResultTextBox(leftTextBox);
         ConfigureResultTextBox(rightTextBox);
         leftTextBox.ScrollChanged += (_, _) => SynchronizeScroll(leftTextBox, rightTextBox);
@@ -105,11 +127,13 @@ public sealed partial class Form1 : Form
 
         resultSplitContainer.Dock = DockStyle.Fill;
         resultSplitContainer.Orientation = Orientation.Vertical;
-        resultSplitContainer.Panel1.Controls.Add(leftTextBox);
-        resultSplitContainer.Panel2.Controls.Add(rightTextBox);
+        resultSplitContainer.Panel1.Controls.Add(CreateResultPane(leftRulerBox, leftTextBox));
+        resultSplitContainer.Panel2.Controls.Add(CreateResultPane(rightRulerBox, rightTextBox));
+        UpdateRulers((int)wrapColumnInput.Value);
 
         Controls.Add(resultSplitContainer);
         Controls.Add(topPanel);
+        ApplyVisibleLineCount();
     }
 
     private static void AddFilePathRow(TableLayoutPanel panel, int row, string labelText, TextBox textBox, Button button)
@@ -167,6 +191,37 @@ public sealed partial class Form1 : Form
         textBox.DetectUrls = false;
     }
 
+    private static void ConfigureRulerTextBox(RichTextBox textBox)
+    {
+        textBox.Dock = DockStyle.Fill;
+        textBox.Font = new Font("Consolas", 10);
+        textBox.ReadOnly = true;
+        textBox.WordWrap = false;
+        textBox.ScrollBars = RichTextBoxScrollBars.None;
+        textBox.HideSelection = true;
+        textBox.DetectUrls = false;
+        textBox.BackColor = Color.FromArgb(245, 245, 245);
+        textBox.BorderStyle = BorderStyle.FixedSingle;
+        textBox.TabStop = false;
+    }
+
+    private static Control CreateResultPane(RichTextBox rulerBox, RichTextBox resultBox)
+    {
+        var pane = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        pane.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        pane.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        pane.Controls.Add(rulerBox, 0, 0);
+        pane.Controls.Add(resultBox, 0, 1);
+        return pane;
+    }
+
     private void SelectFile(TextBox target)
     {
         using var dialog = new OpenFileDialog
@@ -180,6 +235,24 @@ public sealed partial class Form1 : Form
         {
             target.Text = dialog.FileName;
         }
+    }
+
+    private void ApplyStartupArgs()
+    {
+        if (startupArgs.Length < 2)
+        {
+            return;
+        }
+
+        leftPathTextBox.Text = startupArgs[0];
+        rightPathTextBox.Text = startupArgs[1];
+
+        if (startupArgs.Length >= 3 && int.TryParse(startupArgs[2], out var wrapColumns))
+        {
+            wrapColumnInput.Value = Math.Clamp(wrapColumns, (int)wrapColumnInput.Minimum, (int)wrapColumnInput.Maximum);
+        }
+
+        CompareFiles();
     }
 
     private void CompareFiles()
@@ -225,6 +298,7 @@ public sealed partial class Form1 : Form
             var rightLines = BuildVirtualLines(rightPath, wrapColumns, encoding);
             currentCompareLines = CompareVirtualLines(leftLines, rightLines);
             hasCurrentComparison = true;
+            UpdateRulers(wrapColumns);
             ApplyViewModeAndRender();
         }
         catch (Exception ex)
@@ -293,6 +367,7 @@ public sealed partial class Form1 : Form
         resultSplitContainer.Orientation = viewModeComboBox.SelectedItem?.ToString() == "上下表示"
             ? Orientation.Horizontal
             : Orientation.Vertical;
+        ApplyVisibleLineCount();
 
         if (hasCurrentComparison)
         {
@@ -318,6 +393,66 @@ public sealed partial class Form1 : Form
         rightTextBox.SelectionStart = 0;
         leftTextBox.ResumeLayout();
         rightTextBox.ResumeLayout();
+    }
+
+    private void UpdateRulers(int wrapColumns)
+    {
+        var rulerText = BuildRulerText(wrapColumns);
+        SetRulerText(leftRulerBox, rulerText);
+        SetRulerText(rightRulerBox, rulerText);
+    }
+
+    private void ApplyVisibleLineCount()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        var visibleLines = (int)visibleLineCountInput.Value;
+        var textHeight = TextRenderer.MeasureText("0", leftTextBox.Font).Height;
+        var rulerHeight = 42;
+        var paneHeight = rulerHeight + (textHeight * visibleLines) + 8;
+        var resultHeight = resultSplitContainer.Orientation == Orientation.Horizontal
+            ? (paneHeight * 2) + resultSplitContainer.SplitterWidth
+            : paneHeight;
+        var topHeight = resultSplitContainer.Top;
+        var desiredClientHeight = Math.Max(MinimumSize.Height, topHeight + resultHeight + 8);
+
+        ClientSize = new Size(ClientSize.Width, desiredClientHeight);
+    }
+
+    private static void SetRulerText(RichTextBox target, string text)
+    {
+        target.Clear();
+        target.AppendText(text);
+        target.SelectionStart = 0;
+    }
+
+    private static string BuildRulerText(int wrapColumns)
+    {
+        var numberLine = new char[MetadataLength + wrapColumns];
+        Array.Fill(numberLine, ' ');
+        "Column".CopyTo(numberLine);
+
+        for (var column = 10; column <= wrapColumns; column += 10)
+        {
+            var number = column.ToString();
+            var start = MetadataLength + column - number.Length;
+            for (var i = 0; i < number.Length && start + i < numberLine.Length; i++)
+            {
+                numberLine[start + i] = number[i];
+            }
+        }
+
+        var scaleLine = new StringBuilder(MetadataLength + wrapColumns);
+        scaleLine.Append(' ', MetadataLength);
+        for (var column = 1; column <= wrapColumns; column++)
+        {
+            scaleLine.Append(column % 10 == 0 ? '0' : (char)('0' + column % 10));
+        }
+
+        return new string(numberLine) + Environment.NewLine + scaleLine;
     }
 
     private void AppendCompareLine(RichTextBox target, VirtualLine? line, CompareLine compareLine, VirtualLine? otherLine, bool isLast)
@@ -386,10 +521,27 @@ public sealed partial class Form1 : Form
         {
             isSynchronizingScroll = true;
             target.SetScrollPosition(source.GetScrollPosition());
+            SyncRulerScroll(source);
+            SyncRulerScroll(target);
         }
         finally
         {
             isSynchronizingScroll = false;
+        }
+    }
+
+    private void SyncRulerScroll(SyncRichTextBox textBox)
+    {
+        var position = textBox.GetScrollPosition();
+        position.Y = 0;
+
+        if (ReferenceEquals(textBox, leftTextBox))
+        {
+            leftRulerBox.SetScrollPosition(position);
+        }
+        else if (ReferenceEquals(textBox, rightTextBox))
+        {
+            rightRulerBox.SetScrollPosition(position);
         }
     }
 
