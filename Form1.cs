@@ -9,7 +9,7 @@ public sealed partial class Form1 : Form
     private readonly TextBox leftPathTextBox = new();
     private readonly TextBox rightPathTextBox = new();
     private readonly NumericUpDown wrapColumnInput = new();
-    private readonly NumericUpDown visibleLineCountInput = new();
+    private readonly NumericUpDown fontSizeInput = new();
     private readonly ComboBox encodingComboBox = new();
     private readonly ComboBox viewModeComboBox = new();
     private readonly SplitContainer resultSplitContainer = new();
@@ -36,7 +36,6 @@ public sealed partial class Form1 : Form
     {
         base.OnShown(e);
         ApplyStartupArgs();
-        ApplyVisibleLineCount();
     }
 
     private void BuildLayout()
@@ -82,11 +81,11 @@ public sealed partial class Form1 : Form
         wrapColumnInput.Width = 90;
         wrapColumnInput.ValueChanged += (_, _) => UpdateRulers((int)wrapColumnInput.Value);
 
-        visibleLineCountInput.Minimum = 5;
-        visibleLineCountInput.Maximum = 100;
-        visibleLineCountInput.Value = 25;
-        visibleLineCountInput.Width = 70;
-        visibleLineCountInput.ValueChanged += (_, _) => ApplyVisibleLineCount();
+        fontSizeInput.Minimum = 8;
+        fontSizeInput.Maximum = 24;
+        fontSizeInput.Value = 10;
+        fontSizeInput.Width = 70;
+        fontSizeInput.ValueChanged += (_, _) => ApplyEditorFontSize();
 
         encodingComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
         encodingComboBox.Items.AddRange(["Shift_JIS", "UTF-8"]);
@@ -111,7 +110,7 @@ public sealed partial class Form1 : Form
             Margin = new Padding(0, 6, 0, 0),
         };
         AddLabeledControl(optionPanel, "折り返し桁数", wrapColumnInput);
-        AddLabeledControl(optionPanel, "表示行数", visibleLineCountInput);
+        AddLabeledControl(optionPanel, "フォントサイズ", fontSizeInput);
         AddLabeledControl(optionPanel, "文字コード", encodingComboBox);
         AddLabeledControl(optionPanel, "表示モード", viewModeComboBox);
         optionPanel.Controls.Add(compareButton);
@@ -129,11 +128,11 @@ public sealed partial class Form1 : Form
         resultSplitContainer.Orientation = Orientation.Vertical;
         resultSplitContainer.Panel1.Controls.Add(CreateResultPane(leftRulerBox, leftTextBox));
         resultSplitContainer.Panel2.Controls.Add(CreateResultPane(rightRulerBox, rightTextBox));
+        ApplyEditorFontSize();
         UpdateRulers((int)wrapColumnInput.Value);
 
         Controls.Add(resultSplitContainer);
         Controls.Add(topPanel);
-        ApplyVisibleLineCount();
     }
 
     private static void AddFilePathRow(TableLayoutPanel panel, int row, string labelText, TextBox textBox, Button button)
@@ -367,7 +366,6 @@ public sealed partial class Form1 : Form
         resultSplitContainer.Orientation = viewModeComboBox.SelectedItem?.ToString() == "上下表示"
             ? Orientation.Horizontal
             : Orientation.Vertical;
-        ApplyVisibleLineCount();
 
         if (hasCurrentComparison)
         {
@@ -402,31 +400,36 @@ public sealed partial class Form1 : Form
         SetRulerText(rightRulerBox, rulerText);
     }
 
-    private void ApplyVisibleLineCount()
-    {
-        if (!IsHandleCreated)
-        {
-            return;
-        }
-
-        var visibleLines = (int)visibleLineCountInput.Value;
-        var textHeight = TextRenderer.MeasureText("0", leftTextBox.Font).Height;
-        var rulerHeight = 42;
-        var paneHeight = rulerHeight + (textHeight * visibleLines) + 8;
-        var resultHeight = resultSplitContainer.Orientation == Orientation.Horizontal
-            ? (paneHeight * 2) + resultSplitContainer.SplitterWidth
-            : paneHeight;
-        var topHeight = resultSplitContainer.Top;
-        var desiredClientHeight = Math.Max(MinimumSize.Height, topHeight + resultHeight + 8);
-
-        ClientSize = new Size(ClientSize.Width, desiredClientHeight);
-    }
-
     private static void SetRulerText(RichTextBox target, string text)
     {
         target.Clear();
         target.AppendText(text);
         target.SelectionStart = 0;
+    }
+
+    private void ApplyEditorFontSize()
+    {
+        var fontSize = (float)fontSizeInput.Value;
+        var font = new Font("Consolas", fontSize);
+
+        leftTextBox.Font = font;
+        rightTextBox.Font = font;
+        leftRulerBox.Font = font;
+        rightRulerBox.Font = font;
+
+        SetRulerHeight(leftRulerBox);
+        SetRulerHeight(rightRulerBox);
+    }
+
+    private static void SetRulerHeight(Control rulerBox)
+    {
+        if (rulerBox.Parent is not TableLayoutPanel pane)
+        {
+            return;
+        }
+
+        var lineHeight = TextRenderer.MeasureText("0", rulerBox.Font).Height;
+        pane.RowStyles[0].Height = (lineHeight * 2) + 8;
     }
 
     private static string BuildRulerText(int wrapColumns)
