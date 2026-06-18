@@ -18,23 +18,6 @@ zip を展開して、`FixedWrapDiff.exe` を起動してください。
 
 [.NET 8 Desktop Runtime をダウンロード](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-## 起動時にブロックされる場合
-
-FixedWrapDiff は現在、コード署名していない個人作成のアプリです。
-
-そのため、Windows の Smart App Control や Microsoft Defender SmartScreen により、以下のような理由で起動がブロックされる場合があります。
-
-- 発行元を確認できない
-- まだ利用実績が少ない
-- GitHub Releases からダウンロードした未知の exe と判定される
-- バージョン更新により exe の内容が変わり、別の未知のアプリとして扱われる
-
-`FixedWrapDiff.exe` という名前が同じでも、バージョンが変わると exe のハッシュも変わるため、以前のバージョンが起動できても新しいバージョンがブロックされることがあります。
-
-zip ファイルのプロパティに `許可する` または `ブロックの解除` が表示されている場合は、それを有効にしてから展開すると起動できる場合があります。
-
-Smart App Control によるブロックでは、個別アプリだけを許可できない場合があります。根本的には、将来的にコード署名を行うことで改善する予定です。
-
 ## 画面イメージ
 
 ![FixedWrapDiff screenshot](assets/screenshot.png)
