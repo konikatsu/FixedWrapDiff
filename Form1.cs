@@ -12,6 +12,7 @@ public sealed partial class Form1 : Form
     private readonly NumericUpDown fontSizeInput = new();
     private readonly ComboBox encodingComboBox = new();
     private readonly ComboBox viewModeComboBox = new();
+    private readonly ComboBox lineInfoModeComboBox = new();
     private readonly SplitContainer resultSplitContainer = new();
     private readonly SyncRichTextBox leftRulerBox = new();
     private readonly SyncRichTextBox rightRulerBox = new();
@@ -98,6 +99,12 @@ public sealed partial class Form1 : Form
         viewModeComboBox.Width = 110;
         viewModeComboBox.SelectedIndexChanged += (_, _) => ApplyViewModeAndRender();
 
+        lineInfoModeComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        lineInfoModeComboBox.Items.AddRange(["行+折返+桁", "行+折返", "行のみ"]);
+        lineInfoModeComboBox.SelectedIndex = 0;
+        lineInfoModeComboBox.Width = 120;
+        lineInfoModeComboBox.SelectedIndexChanged += (_, _) => ApplyLineInfoMode();
+
         AddFilePathRow(topPanel, 0, "左ファイル", leftPathTextBox, leftButton);
         AddFilePathRow(topPanel, 1, "右ファイル", rightPathTextBox, rightButton);
 
@@ -113,6 +120,7 @@ public sealed partial class Form1 : Form
         AddLabeledControl(optionPanel, "フォントサイズ", fontSizeInput);
         AddLabeledControl(optionPanel, "文字コード", encodingComboBox);
         AddLabeledControl(optionPanel, "表示モード", viewModeComboBox);
+        AddLabeledControl(optionPanel, "行情報", lineInfoModeComboBox);
         optionPanel.Controls.Add(compareButton);
         topPanel.Controls.Add(optionPanel, 0, 2);
         topPanel.SetColumnSpan(optionPanel, 7);
@@ -373,6 +381,15 @@ public sealed partial class Form1 : Form
         }
     }
 
+    private void ApplyLineInfoMode()
+    {
+        UpdateRulers((int)wrapColumnInput.Value);
+        if (hasCurrentComparison)
+        {
+            RenderCompareLines();
+        }
+    }
+
     private void RenderCompareLines()
     {
         leftTextBox.SuspendLayout();
@@ -395,7 +412,7 @@ public sealed partial class Form1 : Form
 
     private void UpdateRulers(int wrapColumns)
     {
-        var rulerText = BuildRulerText(wrapColumns);
+        var rulerText = BuildRulerText(wrapColumns, GetMetadataLength());
         SetRulerText(leftRulerBox, rulerText);
         SetRulerText(rightRulerBox, rulerText);
     }
@@ -432,24 +449,24 @@ public sealed partial class Form1 : Form
         pane.RowStyles[0].Height = (lineHeight * 2) + 8;
     }
 
-    private static string BuildRulerText(int wrapColumns)
+    private static string BuildRulerText(int wrapColumns, int metadataLength)
     {
-        var numberLine = new char[MetadataLength + wrapColumns];
+        var numberLine = new char[metadataLength + wrapColumns];
         Array.Fill(numberLine, ' ');
         "Column".CopyTo(numberLine);
 
         for (var column = 10; column <= wrapColumns; column += 10)
         {
             var number = column.ToString();
-            var start = MetadataLength + column - number.Length;
+            var start = metadataLength + column - number.Length;
             for (var i = 0; i < number.Length && start + i < numberLine.Length; i++)
             {
                 numberLine[start + i] = number[i];
             }
         }
 
-        var scaleLine = new StringBuilder(MetadataLength + wrapColumns);
-        scaleLine.Append(' ', MetadataLength);
+        var scaleLine = new StringBuilder(metadataLength + wrapColumns);
+        scaleLine.Append(' ', metadataLength);
         for (var column = 1; column <= wrapColumns; column++)
         {
             scaleLine.Append(column % 10 == 0 ? '0' : (char)('0' + column % 10));
@@ -460,7 +477,9 @@ public sealed partial class Form1 : Form
 
     private void AppendCompareLine(RichTextBox target, VirtualLine? line, CompareLine compareLine, VirtualLine? otherLine, bool isLast)
     {
-        var text = FormatVirtualLine(line);
+        var lineInfoMode = GetLineInfoMode();
+        var metadataLength = GetMetadataLength(lineInfoMode);
+        var text = FormatVirtualLine(line, lineInfoMode);
         var lineStart = target.TextLength;
         target.AppendText(text);
         if (!isLast)
@@ -477,7 +496,7 @@ public sealed partial class Form1 : Form
 
         if (line is not null && otherLine is not null && line.Text != otherLine.Text)
         {
-            HighlightCharacterDifferences(target, lineStart + MetadataLength, line.Text, otherLine.Text);
+            HighlightCharacterDifferences(target, lineStart + metadataLength, line.Text, otherLine.Text);
         }
 
         target.Select(target.TextLength, 0);
@@ -501,16 +520,40 @@ public sealed partial class Form1 : Form
         }
     }
 
-    private const int MetadataLength = 26;
+    private LineInfoMode GetLineInfoMode() => lineInfoModeComboBox.SelectedIndex switch
+    {
+        1 => LineInfoMode.LineAndWrap,
+        2 => LineInfoMode.LineOnly,
+        _ => LineInfoMode.Full,
+    };
 
-    private static string FormatVirtualLine(VirtualLine? line)
+    private int GetMetadataLength() => GetMetadataLength(GetLineInfoMode());
+
+    private static int GetMetadataLength(LineInfoMode mode) => mode switch
+    {
+        LineInfoMode.LineOnly => 10,
+        LineInfoMode.LineAndWrap => 16,
+        _ => 26,
+    };
+
+    private static string FormatVirtualLine(VirtualLine? line, LineInfoMode mode)
     {
         if (line is null)
         {
-            return "[L------ W--- C---- ----] ";
+            return mode switch
+            {
+                LineInfoMode.LineOnly => "[L------] ",
+                LineInfoMode.LineAndWrap => "[L------ W---] ",
+                _ => "[L------ W--- C---- ----] ",
+            };
         }
 
-        return $"[L{line.OriginalLineNumber:000000} W{line.WrapIndex:000} C{line.StartColumn:0000}-{line.EndColumn:0000}] {line.Text}";
+        return mode switch
+        {
+            LineInfoMode.LineOnly => $"[L{line.OriginalLineNumber:000000}] {line.Text}",
+            LineInfoMode.LineAndWrap => $"[L{line.OriginalLineNumber:000000} W{line.WrapIndex:000}] {line.Text}",
+            _ => $"[L{line.OriginalLineNumber:000000} W{line.WrapIndex:000} C{line.StartColumn:0000}-{line.EndColumn:0000}] {line.Text}",
+        };
     }
 
     private void SynchronizeScroll(SyncRichTextBox source, SyncRichTextBox target)
@@ -565,6 +608,13 @@ public sealed record CompareLine(
     bool IsDifferent,
     bool ExistsOnlyLeft,
     bool ExistsOnlyRight);
+
+public enum LineInfoMode
+{
+    Full,
+    LineAndWrap,
+    LineOnly,
+}
 
 public sealed class SyncRichTextBox : RichTextBox
 {
